@@ -1,0 +1,31 @@
+{
+  "Name": "4-speaker square layout decoder (first order)",
+  "Description": "Basic first-order Ambisonics decoder for four loudspeakers in a square around the listener. SN3D normalization, ACN ordering (AmbiX), Condon-Shortley phase omitted.",
+  "Decoder": {
+    "Name": "Basic first-order square decoder",
+    "Description": "First-order Ambisonics decoded to front-left, front-right, rear-right and rear-left.",
+    "DecoderOrder": 1,
+    "NumberOfInputChannels": 4,
+    "Normalization": "SN3D",
+    "Ordering": "ACN",
+    "CondonShortleyPhase": false,
+    "Weights": "none",
+    "WeightsAlreadyApplied": true,
+    "Routing": [1, 2, 3, 4],
+    "Matrix": [
+      [0.5, 0.3535533906, 0.0, 0.3535533906],
+      [0.5, -0.3535533906, 0.0, 0.3535533906],
+      [0.5, -0.3535533906, 0.0, -0.3535533906],
+      [0.5, 0.3535533906, 0.0, -0.3535533906]
+    ]
+  },
+  "LoudspeakerLayout": {
+    "Name": "4 speakers in a square",
+    "Loudspeakers": [
+      {"Azimuth": 45.0, "Elevation": 0.0, "Radius": 1.0, "Channel": 1, "IsImaginary": false, "Gain": 1.0},
+      {"Azimuth": -45.0, "Elevation": 0.0, "Radius": 1.0, "Channel": 2, "IsImaginary": false, "Gain": 1.0},
+      {"Azimuth": -135.0, "Elevation": 0.0, "Radius": 1.0, "Channel": 3, "IsImaginary": false, "Gain": 1.0},
+      {"Azimuth": 135.0, "Elevation": 0.0, "Radius": 1.0, "Channel": 4, "IsImaginary": false, "Gain": 1.0}
+    ]
+  }
+}
