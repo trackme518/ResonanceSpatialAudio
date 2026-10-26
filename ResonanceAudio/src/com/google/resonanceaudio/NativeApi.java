@@ -4,24 +4,37 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.util.Locale;
 
 /**
- * Declares the native (JNI) methods implemented in resonanceaudio_jni.dll and
- * takes care of loading the native library. Not part of the public API.
+ * Declares the native (JNI) methods implemented in the Resonance Audio native
+ * renderer and takes care of loading the correct platform library. Not part of
+ * the public API.
  */
 final class NativeApi {
+
+  private static final String LIBRARY_NAME = "resonanceaudio_jni";
+  private static final String[] SUPPORTED_PLATFORMS = {
+      "windows-amd64",
+      "macos-x86_64",
+      "macos-aarch64",
+      "linux-amd64",
+      "linux-aarch64"
+  };
 
   static {
     boolean loaded = false;
     try {
-      System.loadLibrary("resonanceaudio_jni");
+      // Processing puts library/<platform>-<arch> on java.library.path.
+      System.loadLibrary(LIBRARY_NAME);
       loaded = true;
     } catch (UnsatisfiedLinkError e) {
-      // Fall back: extract the DLL bundled inside the library jar.
-      String resource = "/native/windows-amd64/resonanceaudio_jni.dll";
+      String platform = nativePlatform();
+      String libraryFile = nativeLibraryFileName(platform);
+      String resource = "/native/" + platform + "/" + libraryFile;
       try (InputStream in = NativeApi.class.getResourceAsStream(resource)) {
         if (in != null) {
-          File tmp = File.createTempFile("resonanceaudio_jni", ".dll");
+          File tmp = File.createTempFile(LIBRARY_NAME, librarySuffix(platform));
           tmp.deleteOnExit();
           try (OutputStream out = Files.newOutputStream(tmp.toPath())) {
             byte[] buf = new byte[65536];
@@ -34,15 +47,60 @@ final class NativeApi {
           loaded = true;
         }
       } catch (Exception ex) {
-        throw new UnsatisfiedLinkError(
-            "Could not extract bundled resonanceaudio_jni.dll: " + ex);
+        throw new UnsatisfiedLinkError("Could not extract bundled "
+            + libraryFile + " for " + platform + ": " + ex);
       }
       if (!loaded) {
-        throw new UnsatisfiedLinkError(
-            "Could not load resonanceaudio_jni.dll (native Resonance Audio "
-                + "renderer). Currently only Windows x64 is supported.");
+        throw new UnsatisfiedLinkError("Could not load " + libraryFile
+            + " (native Resonance Audio renderer) for " + platform
+            + ". Supported platforms: " + String.join(", ", SUPPORTED_PLATFORMS));
       }
     }
+  }
+
+  private static String nativePlatform() {
+    String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+    String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
+    if (os.contains("win")) {
+      return isX64(arch) ? "windows-amd64" : "windows-" + arch;
+    }
+    if (os.contains("mac") || os.contains("darwin")) {
+      return isX64(arch) ? "macos-x86_64"
+          : isArm64(arch) ? "macos-aarch64" : "macos-" + arch;
+    }
+    if (os.contains("linux")) {
+      return isX64(arch) ? "linux-amd64"
+          : isArm64(arch) ? "linux-aarch64" : "linux-" + arch;
+    }
+    return os.replaceAll("[^a-z0-9]+", "-") + "-" + arch;
+  }
+
+  private static boolean isX64(String arch) {
+    return arch.equals("amd64") || arch.equals("x86_64") || arch.equals("x64");
+  }
+
+  private static boolean isArm64(String arch) {
+    return arch.equals("aarch64") || arch.equals("arm64");
+  }
+
+  private static String nativeLibraryFileName(String platform) {
+    if (platform.startsWith("windows-")) {
+      return LIBRARY_NAME + ".dll";
+    }
+    if (platform.startsWith("macos-")) {
+      return "lib" + LIBRARY_NAME + ".dylib";
+    }
+    return "lib" + LIBRARY_NAME + ".so";
+  }
+
+  private static String librarySuffix(String platform) {
+    if (platform.startsWith("windows-")) {
+      return ".dll";
+    }
+    if (platform.startsWith("macos-")) {
+      return ".dylib";
+    }
+    return ".so";
   }
 
   private NativeApi() {

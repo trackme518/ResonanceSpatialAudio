@@ -1,6 +1,12 @@
 build/
 out/
 pkg/
+release/
+artifacts/
+sound-lib/
+sound.zip
+core.jar
+ResonanceAudio/reference/
 tools/cmake-*/
 tools/cmake.zip
 *.log

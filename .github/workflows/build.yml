@@ -1,0 +1,207 @@
+name: Build Processing Library
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (without leading v)"
+        required: true
+        default: "1.1.0"
+      publish:
+        description: "Create or update the GitHub release"
+        type: boolean
+        default: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_VERSION: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+
+jobs:
+  native:
+    name: Native ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-amd64
+            library: resonanceaudio_jni.dll
+          - os: macos-13
+            platform: macos-x86_64
+            library: libresonanceaudio_jni.dylib
+          - os: macos-14
+            platform: macos-aarch64
+            library: libresonanceaudio_jni.dylib
+          - os: ubuntu-22.04
+            platform: linux-amd64
+            library: libresonanceaudio_jni.so
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+            library: libresonanceaudio_jni.so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configure native renderer
+        run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build native renderer
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Stage native library
+        shell: bash
+        run: |
+          set -euo pipefail
+          library="${{ matrix.library }}"
+          found="$(find build/native -type f -name "$library" | head -n 1)"
+          if [ -z "$found" ]; then
+            echo "Could not find $library in build/native" >&2
+            find build/native -maxdepth 3 -type f >&2
+            exit 1
+          fi
+          mkdir -p "dist/${{ matrix.platform }}"
+          cp "$found" "dist/${{ matrix.platform }}/$library"
+          ls -l "dist/${{ matrix.platform }}"
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: dist/
+          if-no-files-found: error
+
+  package:
+    name: Package Processing library
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download native libraries
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: native-*
+
+      - name: Download Java dependencies
+        run: |
+          set -euo pipefail
+          curl -L --fail -o sound.zip \
+            https://github.com/processing/processing-sound/releases/download/v2.4.0/sound.zip
+          unzip -q sound.zip -d sound-lib
+          curl -L --fail -o core.jar \
+            https://repo1.maven.org/maven2/org/processing/core/4.3.1/core-4.3.1.jar
+
+      - name: Compile Java library and stage native libraries
+        run: |
+          set -euo pipefail
+          CP="core.jar:sound-lib/sound/library/sound.jar:sound-lib/sound/library/jsyn-17.1.0.jar"
+          rm -rf build/classes build/jar-resources
+          mkdir -p build/classes build/jar-resources
+          find ResonanceAudio/src -name '*.java' > build/sources.txt
+          javac --release 17 -encoding UTF-8 -cp "$CP" \
+            -d build/classes @build/sources.txt
+
+          # Remove any stale platform directories from the checked-out tree.
+          rm -rf ResonanceAudio/library/windows-* \
+                 ResonanceAudio/library/macos-* \
+                 ResonanceAudio/library/linux-*
+
+          for artifact in artifacts/native-*; do
+            platform="${artifact##*/native-}"
+            source_dir="$artifact/$platform"
+            test -d "$source_dir"
+            mkdir -p "build/jar-resources/native/$platform" \
+                     "ResonanceAudio/library/$platform"
+            cp "$source_dir"/* "build/jar-resources/native/$platform/"
+            cp "$source_dir"/* "ResonanceAudio/library/$platform/"
+          done
+
+          jar cf ResonanceAudio/library/ResonanceAudio.jar \
+            -C build/classes . \
+            -C build/jar-resources .
+
+      - name: Generate Javadoc
+        run: |
+          set -euo pipefail
+          CP="core.jar:sound-lib/sound/library/sound.jar:sound-lib/sound/library/jsyn-17.1.0.jar"
+          rm -rf ResonanceAudio/reference
+          javadoc --release 17 -quiet -Xdoclint:none -encoding UTF-8 \
+            -classpath "$CP" -sourcepath ResonanceAudio/src \
+            -d ResonanceAudio/reference com.google.resonanceaudio
+
+      - name: Normalize version
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_VERSION#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          sed -i "s/^prettyVersion=.*/prettyVersion=$VERSION/" ResonanceAudio/library.properties
+
+      - name: Create Processing release artifacts
+        run: |
+          set -euo pipefail
+          rm -rf release
+          mkdir -p release/ResonanceAudio/library \
+                   release/ResonanceAudio/examples \
+                   release/ResonanceAudio/src
+
+          cp ResonanceAudio/library.properties release/ResonanceAudio/
+          cp ResonanceAudio/library/ResonanceAudio.jar release/ResonanceAudio/library/
+          for platform_dir in ResonanceAudio/library/*/; do
+            cp -r "$platform_dir" release/ResonanceAudio/library/
+          done
+          cp -r ResonanceAudio/examples/. release/ResonanceAudio/examples/
+          cp -r ResonanceAudio/src/. release/ResonanceAudio/src/
+          if [ -d ResonanceAudio/reference ]; then
+            cp -r ResonanceAudio/reference release/ResonanceAudio/
+          fi
+          cp LICENSE release/ResonanceAudio/LICENSE
+          cp README.md release/ResonanceAudio/README.md
+          cp ResonanceAudio/library.properties release/ResonanceAudio.txt
+
+          (cd release && zip -qr ResonanceAudio.zip ResonanceAudio)
+          cp release/ResonanceAudio.zip release/ResonanceAudio.pdex
+          ls -lh release
+
+      - name: Upload Processing library artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: processing-library
+          path: |
+            release/ResonanceAudio.txt
+            release/ResonanceAudio.zip
+            release/ResonanceAudio.pdex
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: ${{ github.event_name == 'push' || inputs.publish }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION }}
+          name: Resonance Spatial Audio ${{ env.VERSION }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release/ResonanceAudio.txt
+            release/ResonanceAudio.zip
+            release/ResonanceAudio.pdex
