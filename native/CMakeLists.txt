@@ -22,6 +22,9 @@ target_include_directories(resonanceaudio_jni PRIVATE
 target_compile_definitions(resonanceaudio_jni PRIVATE
         _USE_MATH_DEFINES NOMINMAX EIGEN_MPL2_ONLY)
 target_link_libraries(resonanceaudio_jni PRIVATE ResonanceAudioStatic Threads::Threads)
+set_target_properties(resonanceaudio_jni PROPERTIES
+        CXX_STANDARD 11
+        CXX_STANDARD_REQUIRED ON)
 
 # Use the platform's normal naming on Unix (libresonanceaudio_jni.so/.dylib),
 # but keep the Windows DLL unprefixed.
