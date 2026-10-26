@@ -16,6 +16,7 @@ final class NativeApi {
   private static final String LIBRARY_NAME = "resonanceaudio_jni";
   private static final String[] SUPPORTED_PLATFORMS = {
       "windows-amd64",
+      "windows-arm64",
       "macos-x86_64",
       "macos-aarch64",
       "linux-amd64",
@@ -62,7 +63,8 @@ final class NativeApi {
     String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
     String arch = System.getProperty("os.arch", "").toLowerCase(Locale.ROOT);
     if (os.contains("win")) {
-      return isX64(arch) ? "windows-amd64" : "windows-" + arch;
+      return isX64(arch) ? "windows-amd64"
+          : isArm64(arch) ? "windows-arm64" : "windows-" + arch;
     }
     if (os.contains("mac") || os.contains("darwin")) {
       return isX64(arch) ? "macos-x86_64"

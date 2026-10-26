@@ -19,7 +19,7 @@ integration. It ships standalone and Sound-library-based examples.
 - Distance, directivity, occlusion, and near-field effects
 - Processing Sound library integration
 - Low-latency ASIO output examples for Focusrite audio interfaces
-- Windows, macOS (Intel and Apple Silicon), and Linux (x64 and arm64)
+- Windows (x64 and arm64), macOS (Intel and Apple Silicon), and Linux (x64 and arm64)
 
 ## Installation
 

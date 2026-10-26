@@ -31,6 +31,9 @@ jobs:
           - os: windows-latest
             platform: windows-amd64
             library: resonanceaudio_jni.dll
+          - os: windows-11-arm
+            platform: windows-arm64
+            library: resonanceaudio_jni.dll
           - os: macos-15-intel
             platform: macos-x86_64
             library: libresonanceaudio_jni.dylib
