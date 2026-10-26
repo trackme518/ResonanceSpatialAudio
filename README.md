@@ -1,18 +1,22 @@
 # Resonance Spatial Audio for Processing
 
-Google Resonance Audio spatial audio for Processing: HRTF binaural rendering,
-1st/2nd/3rd order Ambisonics, and Ambisonics-to-loudspeaker decoding.
+Resonance Spatial Audio is an independent spatial audio library for Processing:
+HRTF binaural rendering, 1st/2nd/3rd order Ambisonics, and
+Ambisonics-to-loudspeaker decoding, with room reflections either enabled or
+disabled per scene.
 
-The library is a desktop Java/JNI port of the Google Resonance Audio engine. It
-integrates with the Processing Sound library and provides standalone and
-Sound-library-based examples.
+It combines the Resonance Audio DSP core with a Processing-specific Java/JNI
+layer and adds multi-channel output, Ambisonics output and decoding,
+configurable room reflections and reverb, and Processing Sound library
+integration. It ships standalone and Sound-library-based examples.
 
 ## Features
 
 - HRTF-based binaural rendering for headphones
 - 1st, 2nd, and 3rd order Ambisonics B-format output (ACN/SN3D)
 - Speaker-array decoding from precomputed matrices
-- Room, distance, directivity, occlusion, and near-field effects
+- Optional room reflections and reverb (on/off)
+- Distance, directivity, occlusion, and near-field effects
 - Processing Sound library integration
 - Low-latency ASIO output examples for Focusrite audio interfaces
 - Windows, macOS (Intel and Apple Silicon), and Linux (x64 and arm64)
@@ -57,7 +61,7 @@ library for all supported platforms.
 
 ## License
 
-Copyright (C) 2026 The Resonance Spatial Audio contributors.
+Copyright (C) 2026 L. Leischner.
 
 This project is licensed under the **GNU General Public License v3.0**; see
 [LICENSE](LICENSE).
