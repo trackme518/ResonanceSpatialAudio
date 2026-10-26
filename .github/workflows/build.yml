@@ -31,7 +31,7 @@ jobs:
           - os: windows-latest
             platform: windows-amd64
             library: resonanceaudio_jni.dll
-          - os: macos-13
+          - os: macos-15-intel
             platform: macos-x86_64
             library: libresonanceaudio_jni.dylib
           - os: macos-14
@@ -46,10 +46,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -88,10 +88,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"

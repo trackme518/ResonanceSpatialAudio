@@ -60,7 +60,7 @@ elseif(ANDROID)
     add_definitions(-DPLATFORM_ANDROID)
 endif ()
 
-cmake_minimum_required(VERSION 3.4.1)
+cmake_minimum_required(VERSION 3.16)
 set(CMAKE_COLOR_MAKEFILE ON)
 
 set(INSTALL_DIR "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Install path")
@@ -94,7 +94,11 @@ elseif (ANDROID)
     set(NEON ON)
 elseif (UNIX)
     set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-    set(CMAKE_CXX_FLAGS "-fPIC -O3 -Wno-vla -msse -msse2 -msse3 -mfpmath=sse")
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|i[3-6]86)$")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -O3 -Wno-vla -msse -msse2 -msse3 -mfpmath=sse")
+    else ()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -O3 -Wno-vla")
+    endif ()
 endif ()
 
 # Add Eigen3.
