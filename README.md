@@ -61,7 +61,7 @@ library for all supported platforms.
 
 ## License
 
-Copyright (C) 2026 L. Leischner.
+Copyright (C) 2026 V. Leischner.
 
 This project is licensed under the **GNU General Public License v3.0**; see
 [LICENSE](LICENSE).
