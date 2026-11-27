@@ -1,9 +1,9 @@
 {
   "Name": "12.1 Muzeum Prahy 2D (3rd-order AllRAD)",
-  "Description": "All-Round Ambisonic decoder (AllRAD, 3rd order, maxrE weights baked in) converted from museum_of_prague_speaker_preset_12_1.json (18m x 7m hall, 12 horizontal speakers on ch 1-12 + discrete subwoofer on ch 41). SN3D normalization, ACN ordering (AmbiX), Condon-Shortley phase omitted.",
+  "Description": "All-Round Ambisonic decoder (AllRAD, 3rd order, maxrE weights baked in) converted from museum_of_prague_speaker_preset_12_1.json (18m x 7m hall, 12 horizontal speakers on ch 1-12 + discrete subwoofer on ch 13). SN3D normalization, ACN ordering (AmbiX), Condon-Shortley phase omitted.",
   "Decoder": {
     "Name": "12.1 Muzeum Prahy AllRAD order-3",
-    "Description": "Order-3 Ambisonics AllRAD decoder (SN3D/ACN, maxrE weights applied) for 12 horizontal speakers (ch 1-12) and discrete subwoofer (ch 41).",
+    "Description": "Order-3 Ambisonics AllRAD decoder (SN3D/ACN, maxrE weights applied) for 12 horizontal speakers (ch 1-12) and discrete subwoofer (ch 13).",
     "DecoderOrder": 3,
     "NumberOfInputChannels": 16,
     "Normalization": "SN3D",
@@ -30,7 +30,7 @@
       0.5083741268536298,
       0.5083741268536298
     ],
-    "SubwooferChannel": 41,
+    "SubwooferChannel": 13,
     "SubwooferCrossoverHz": 80.0,
     "SubwooferGainDb": 0.0,
     "Matrix": [

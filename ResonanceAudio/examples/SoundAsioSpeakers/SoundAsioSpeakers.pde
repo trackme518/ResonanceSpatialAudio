@@ -7,7 +7,7 @@
  *
  * Included decoder presets in data/:
  *   - decoder_museum_of_prague_12_1.json : 3rd-order AllRAD, 12 speakers
- *       (ch 1-12) + discrete subwoofer (ch 41) -> needs >= 41 device outputs
+ *       (ch 1-12) + discrete subwoofer (ch 13) -> needs >= 13 device outputs
  *       (e.g. Dante Virtual Soundcard in 64x64 ASIO mode).
  *   - decoder_4square_sub.json           : 1st-order square, 4 speakers
  *       (ch 1-4) + discrete subwoofer (ch 5)   -> needs >= 5 device outputs.
@@ -70,7 +70,7 @@ static final String ASIO_DRIVER_NAME = "Dante Virtual Soundcard (x64)";
 //static final String ASIO_DRIVER_NAME = "ASIO4ALL v2";
 
 // Decoder JSON to load from data/ (pick a layout with or without subwoofer):
-static final String DECODER_FILE = "decoder_museum_of_prague_12_1.json"; // 12.1 (ch 1-12 + sub ch 41)
+static final String DECODER_FILE = "decoder_museum_of_prague_12_1.json"; // 12.1 (ch 1-12 + sub ch 13)
 //static final String DECODER_FILE = "decoder_4square_sub.json";         // 4.1  (ch 1-4  + sub ch 5)
 //static final String DECODER_FILE = "decoder_4square.json";             // 4.0  (ch 1-4, no subwoofer)
 
@@ -83,7 +83,7 @@ ResonanceSoundFile sourceA;  // orbiting
 boolean usingASIO = false;
 String deviceLabel = "system default";
 int numSpeakers = 12;
-int numOutputChannels = 41;
+int numOutputChannels = 13;
 
 void setup() {
   size(640, 480);
