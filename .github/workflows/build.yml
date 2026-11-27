@@ -83,7 +83,7 @@ jobs:
           ls -l "dist/${{ matrix.platform }}"
 
       - name: Upload native library
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.platform }}
           path: dist/
@@ -104,7 +104,7 @@ jobs:
           java-version: "17"
 
       - name: Download native libraries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: native-*
@@ -190,7 +190,7 @@ jobs:
           ls -lh release
 
       - name: Upload Processing library artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: processing-library
           path: |
@@ -201,7 +201,7 @@ jobs:
 
       - name: Publish GitHub release
         if: ${{ github.event_name == 'push' || inputs.publish }}
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ env.VERSION }}
           name: Resonance Spatial Audio ${{ env.VERSION }}
