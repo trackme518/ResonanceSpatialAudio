@@ -58,7 +58,11 @@ typedef float SimdVector;
 #define SIMD_SQRT(a) (1.0f / FastReciprocalSqrt(a))
 #define SIMD_RECIPROCAL_SQRT(a) FastReciprocalSqrt(a)
 #define SIMD_LOAD_ONE_FLOAT(p) (p)
+#if defined(_MSC_VER)
+#pragma message("Not using SIMD optimizations!")
+#else
 #warning "Not using SIMD optimizations!"
+#endif
 #endif
 
 #endif  // RESONANCE_AUDIO_BASE_SIMD_MACROS_H_
