@@ -41,7 +41,7 @@ jobs:
           - os: macos-15-intel
             platform: macos-x86_64
             library: libresonanceaudio_jni.dylib
-          - os: macos-14
+          - os: macos-15
             platform: macos-aarch64
             library: libresonanceaudio_jni.dylib
           - os: ubuntu-22.04
@@ -55,11 +55,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (JNI headers)
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - name: Configure native renderer
         run: cmake -S native -B build/native -DCMAKE_BUILD_TYPE=Release
