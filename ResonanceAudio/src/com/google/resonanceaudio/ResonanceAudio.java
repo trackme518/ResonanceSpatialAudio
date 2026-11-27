@@ -60,8 +60,10 @@ public class ResonanceAudio {
    * Output mode flag for {@link InitOptions#numOutputChannels}: decode the
    * renderer's world-space B-format output to loudspeakers with a
    * {@link SpeakerDecoder} (precomputed matrix from an IEM AllRADecoder /
-   * MatrixDecoder JSON export). The number of output channels is then the
-   * decoder's loudspeaker count; create the instance with
+   * MatrixDecoder JSON export). The number of output channels is
+   * {@link SpeakerDecoder#getNumOutputChannels()} (device-channel ordered,
+   * honoring {@code Routing} and any discrete {@code SubwooferChannel});
+   * create the instance with
    * {@link #ResonanceAudio(InitOptions, SpeakerDecoder)}.
    */
   public static final int OUTPUT_DECODER = 1;
@@ -93,6 +95,11 @@ public class ResonanceAudio {
   private final int ambisonicChannels;
   private final SpeakerDecoder decoder;
   private final float[] ambisonicScratch;
+  private final float[] subwooferScratch;
+  private final LinkwitzRileyCrossover subwooferCrossover;
+  private volatile float subwooferGainDb;
+  private volatile boolean subwooferPolarityInverted;
+  private volatile float subwooferGainLinear;
 
   /** Listener orientation as quaternion (x, y, z, w). */
   private float orX = 0, orY = 0, orZ = 0, orW = 1;
@@ -112,8 +119,13 @@ public class ResonanceAudio {
    * world-space B-format mode (order matches the decoder's input channel
    * count: 4/9/16 channels = 1st/2nd/3rd order) and every rendered block is
    * immediately multiplied with the decoder matrix, so the effective output
-   * has {@code decoder.getNumChannels()} channels. B-format and binaural
-   * outputs remain available via {@link #fillAmbisonicBuffer(float[])} and
+   * has {@code decoder.getNumOutputChannels()} device-ordered channels
+   * (honoring {@code Routing} and any configured discrete
+   * {@code SubwooferChannel}). When a subwoofer channel is configured, a
+   * complementary 4th-order Linkwitz-Riley crossover splits bass from the
+   * Ambisonic W channel to the subwoofer and high-passes the loudspeaker
+   * feeds. B-format and binaural outputs remain available full-band via
+   * {@link #fillAmbisonicBuffer(float[])} and
    * {@link #fillBinauralBuffer(float[])}.
    *
    * @param options  init options with
@@ -151,9 +163,23 @@ public class ResonanceAudio {
     this.framesPerBuffer = options.numFramesPerBuffer;
     this.sampleRate = options.sampleRate;
     this.outputChannels =
-        decoder != null ? decoder.getNumChannels() : nativeChannels;
+        decoder != null ? decoder.getNumOutputChannels() : nativeChannels;
     this.ambisonicScratch = decoder != null
         ? new float[framesPerBuffer * nativeChannels] : null;
+    if (decoder != null && decoder.hasSubwoofer()) {
+      this.subwooferScratch = new float[framesPerBuffer];
+      this.subwooferCrossover = new LinkwitzRileyCrossover(sampleRate,
+          nativeChannels, decoder.getSubwooferCrossoverFrequency());
+      this.subwooferGainDb = decoder.getSubwooferGainDb();
+      this.subwooferPolarityInverted = false;
+      updateSubwooferGainLinear();
+    } else {
+      this.subwooferScratch = null;
+      this.subwooferCrossover = null;
+      this.subwooferGainDb = 0f;
+      this.subwooferPolarityInverted = false;
+      this.subwooferGainLinear = 0f;
+    }
     this.handle = NativeApi.nativeCreate(nativeChannels, framesPerBuffer,
         sampleRate);
     if (handle == 0) {
@@ -171,8 +197,9 @@ public class ResonanceAudio {
   }
 
   /**
-   * 2 for binaural output, 16 for third order ambisonics B-format, or the
-   * loudspeaker count of the {@link SpeakerDecoder} in decoder mode.
+   * 2 for binaural output, 4/9/16 for raw ambisonics B-format, or
+   * {@link SpeakerDecoder#getNumOutputChannels()} in decoder mode (including
+   * routing gaps and any discrete subwoofer channel).
    */
   public int getOutputChannels() {
     return outputChannels;
@@ -181,6 +208,89 @@ public class ResonanceAudio {
   /** The speaker decoder of this instance, or null if none. */
   public SpeakerDecoder getDecoder() {
     return decoder;
+  }
+
+  /** True if this instance is in decoder mode with a discrete subwoofer channel. */
+  public boolean hasSubwoofer() {
+    return subwooferCrossover != null;
+  }
+
+  /**
+   * 1-based physical output channel for the discrete subwoofer, or {@code -1}
+   * if none is configured.
+   */
+  public int getSubwooferChannel() {
+    return decoder != null ? decoder.getSubwooferChannel() : -1;
+  }
+
+  /**
+   * Sets the 4th-order Linkwitz-Riley bass-management crossover frequency in
+   * Hz (clamped internally to {@code [10 Hz, 0.45 * sampleRate]}). Only
+   * meaningful when {@link #hasSubwoofer()} is true.
+   */
+  public void setSubwooferCrossoverFrequency(float frequencyHz) {
+    if (Float.isNaN(frequencyHz) || Float.isInfinite(frequencyHz)
+        || frequencyHz <= 0f) {
+      throw new IllegalArgumentException(
+          "Subwoofer crossover frequency must be finite and > 0: "
+              + frequencyHz);
+    }
+    if (subwooferCrossover != null) {
+      subwooferCrossover.setCutoffFrequency(frequencyHz);
+    }
+  }
+
+  /**
+   * Active subwoofer crossover frequency in Hz, or {@code 0} if no subwoofer
+   * is configured.
+   */
+  public float getSubwooferCrossoverFrequency() {
+    return subwooferCrossover != null
+        ? subwooferCrossover.getCutoffFrequency() : 0f;
+  }
+
+  /**
+   * Sets the subwoofer gain trim in dB (relative to the automatic
+   * energy-matched level). Only meaningful when {@link #hasSubwoofer()} is
+   * true.
+   */
+  public void setSubwooferGainDb(float gainDb) {
+    if (Float.isNaN(gainDb) || Float.isInfinite(gainDb)) {
+      throw new IllegalArgumentException(
+          "Subwoofer gain must be finite: " + gainDb);
+    }
+    this.subwooferGainDb = gainDb;
+    if (subwooferCrossover != null) {
+      updateSubwooferGainLinear();
+    }
+  }
+
+  /** Current subwoofer gain trim in dB. */
+  public float getSubwooferGainDb() {
+    return subwooferGainDb;
+  }
+
+  /**
+   * Inverts or restores the polarity (180-degree phase flip) of the discrete
+   * subwoofer channel to help align acoustic phase with main speakers. Only
+   * meaningful when {@link #hasSubwoofer()} is true.
+   */
+  public void setSubwooferPolarityInverted(boolean inverted) {
+    this.subwooferPolarityInverted = inverted;
+    if (subwooferCrossover != null) {
+      updateSubwooferGainLinear();
+    }
+  }
+
+  /** True if discrete subwoofer output polarity is inverted. */
+  public boolean isSubwooferPolarityInverted() {
+    return subwooferPolarityInverted;
+  }
+
+  private void updateSubwooferGainLinear() {
+    float trim = (float) Math.pow(10.0, subwooferGainDb / 20.0);
+    float sign = subwooferPolarityInverted ? -1.0f : 1.0f;
+    this.subwooferGainLinear = decoder.getSubwooferBaseGain() * trim * sign;
   }
 
   /**
@@ -354,17 +464,32 @@ public class ResonanceAudio {
       return NativeApi.nativeFillOutputBuffer(handle, interleavedOut,
           outputChannels);
     }
-    if (interleavedOut.length
-        != framesPerBuffer * decoder.getNumChannels()) {
+    if (interleavedOut.length != framesPerBuffer * outputChannels) {
       throw new IllegalArgumentException("Output buffer must hold "
-          + framesPerBuffer + " frames x " + decoder.getNumChannels()
-          + " decoder channels");
+          + framesPerBuffer + " frames x " + outputChannels
+          + " decoder output channels");
     }
     if (!NativeApi.nativeFillOutputBuffer(handle, ambisonicScratch,
         ambisonicChannels)) {
       return false;
     }
-    decoder.decodeInterleaved(ambisonicScratch, interleavedOut);
+    if (subwooferCrossover != null) {
+      // Extract omni W (ACN channel 0) before high-passing B-format in place.
+      for (int s = 0; s < framesPerBuffer; s++) {
+        subwooferScratch[s] = ambisonicScratch[s * ambisonicChannels];
+      }
+      subwooferCrossover.processLowPass(subwooferScratch, framesPerBuffer);
+      float subGain = subwooferGainLinear;
+      for (int s = 0; s < framesPerBuffer; s++) {
+        subwooferScratch[s] *= subGain;
+      }
+      subwooferCrossover.processHighPassInterleaved(ambisonicScratch,
+          framesPerBuffer);
+      decoder.decodeRoutedInterleaved(ambisonicScratch, interleavedOut,
+          subwooferScratch);
+    } else {
+      decoder.decodeRoutedInterleaved(ambisonicScratch, interleavedOut, null);
+    }
     return true;
   }
 

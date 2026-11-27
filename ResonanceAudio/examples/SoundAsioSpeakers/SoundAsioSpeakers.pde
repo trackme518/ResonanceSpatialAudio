@@ -1,25 +1,46 @@
 /**
- * Sound ASIO Speakers (Focusrite Scarlett)
+ * Sound ASIO Speakers (Multi-channel Ambisonics + optional Subwoofer)
  *
- * First-order Ambisonics decoded to four loudspeakers in a square layout and
- * played through a Focusrite Scarlett USB interface using the Sound library's
- * native ASIO driver support (JAsioHost).
+ * World-space Ambisonics decoded to a loudspeaker array (with or without a
+ * discrete bass-managed subwoofer) and played through an ASIO interface using
+ * the Sound library's native ASIO driver support (JAsioHost) at 48 kHz.
  *
- * The spatializer renders world-space first-order Ambisonics B-format
- * (ACN/SN3D), and the precomputed matrix in data/decoder_4square.json decodes
- * it to four loudspeakers. Connect the interface outputs as follows:
+ * Included decoder presets in data/:
+ *   - decoder_museum_of_prague_12_1.json : 3rd-order AllRAD, 12 speakers
+ *       (ch 1-12) + discrete subwoofer (ch 41) -> needs >= 41 device outputs
+ *       (e.g. Dante Virtual Soundcard in 64x64 ASIO mode).
+ *   - decoder_4square_sub.json           : 1st-order square, 4 speakers
+ *       (ch 1-4) + discrete subwoofer (ch 5)   -> needs >= 5 device outputs.
+ *   - decoder_4square.json               : 1st-order square, 4 speakers
+ *       (ch 1-4), NO subwoofer                 -> needs >= 4 device outputs.
  *
- *   output 1 -> front left    (azimuth +45)
- *   output 2 -> front right   (azimuth -45)
- *   output 3 -> rear right    (azimuth -135)
- *   output 4 -> rear left     (azimuth +135)
+ * Speaker layouts WITH or WITHOUT a subwoofer:
+ *   1) In the decoder JSON ("Decoder" object):
+ *      - Without subwoofer: omit "SubwooferChannel" (or set it to -1). All
+ *        loudspeakers receive full-band decoded audio.
+ *      - With discrete subwoofer: set "SubwooferChannel" to a 1-based physical
+ *        output channel that does NOT collide with any channel in "Routing"
+ *        (e.g. "Routing": [1, 2, 3, 4], "SubwooferChannel": 5). Optional
+ *        fields "SubwooferCrossoverHz" (default 80.0) and "SubwooferGainDb"
+ *        (default 0.0) set the default 4th-order Linkwitz-Riley (LR4)
+ *        crossover and gain trim.
+ *   2) Programmatically in Processing code:
+ *      - Add or override a subwoofer on any decoder JSON without editing the
+ *        file:
+ *          decoder = new SpeakerDecoder(dataPath("decoder_4square.json"), 5);
+ *          // or: decoder = decoder.withSubwooferChannel(5);
+ *          // pass -1 to disable a JSON's subwoofer channel.
+ *      - Adjust subwoofer parameters at runtime:
+ *          ra.setSubwooferCrossoverFrequency(80);   // Hz (LR4)
+ *          ra.setSubwooferGainDb(0);                // dB trim
+ *          ra.setSubwooferPolarityInverted(false);  // 180-deg phase flip
  *
- * ASIO has to be enabled with MultiChannel.useJASIO() before any other Sound
- * library call. The sketch prints every registered ASIO driver and looks for
- * "Focusrite USB ASIO", falling back to another Focusrite driver, then the
- * first ASIO driver, and finally the system default audio device. This is a
- * Windows-only feature; on other systems the sketch still runs on the default
- * driver.
+ * ASIO & 48 kHz setup:
+ *   MultiChannel.useJASIO() must be the very first Sound library call,
+ *   followed by Sound.sampleRate(48000) BEFORE constructing new Sound(this).
+ *   This is required for interfaces locked to 48 kHz such as Dante Virtual
+ *   Soundcard. This is a Windows-only feature; on other systems the sketch
+ *   falls back to the system default audio device.
  *
  * Controls:
  *   mouse Y  - move the height of the orbiting source
@@ -28,7 +49,8 @@
  *   D        - print the ASIO driver list again
  *
  * Requires: ResonanceAudio library + Sound library with ASIO support
- * (2.5.0-jasio or newer) + Focusrite USB ASIO driver + 4 speakers.
+ * (2.5.0-jasio or newer) + an ASIO driver with enough output channels for the
+ * selected decoder.
  */
 
 import processing.sound.*;
@@ -36,12 +58,21 @@ import com.google.resonanceaudio.*;
 import com.synthbot.jasiohost.AsioDriver;
 import java.util.List;
 
-// Exact name of the ASIO driver installed by Focusrite for Scarlett USB
-// interfaces. Other Focusrite interfaces use "Focusrite Thunderbolt ASIO".
-static final String ASIO_DRIVER_NAME = "Focusrite USB ASIO";
+// Exact ASIO driver name to open (press 'D' while running to print all
+// registered ASIO drivers on this machine).
+// Active device:
+static final String ASIO_DRIVER_NAME = "Dante Virtual Soundcard (x64)";
+// Other ASIO devices tested for reference (uncomment one to switch):
+//static final String ASIO_DRIVER_NAME = "Focusrite USB ASIO";
+//static final String ASIO_DRIVER_NAME = "Focusrite Thunderbolt ASIO";
+//static final String ASIO_DRIVER_NAME = "US-16x08 ASIO";
+//static final String ASIO_DRIVER_NAME = "VB-Matrix VASIO-64A";
+//static final String ASIO_DRIVER_NAME = "ASIO4ALL v2";
 
-// First-order Ambisonics decoder for four speakers in a square.
-static final String DECODER_FILE = "decoder_4square.json";
+// Decoder JSON to load from data/ (pick a layout with or without subwoofer):
+static final String DECODER_FILE = "decoder_museum_of_prague_12_1.json"; // 12.1 (ch 1-12 + sub ch 41)
+//static final String DECODER_FILE = "decoder_4square_sub.json";         // 4.1  (ch 1-4  + sub ch 5)
+//static final String DECODER_FILE = "decoder_4square.json";             // 4.0  (ch 1-4, no subwoofer)
 
 Sound sound;
 SpeakerDecoder decoder;
@@ -51,7 +82,8 @@ ResonanceSoundFile sourceA;  // orbiting
 
 boolean usingASIO = false;
 String deviceLabel = "system default";
-int numSpeakers = 4;
+int numSpeakers = 12;
+int numOutputChannels = 41;
 
 void setup() {
   size(640, 480);
@@ -60,10 +92,15 @@ void setup() {
   // Has to be the very first Sound library call, before creating the Sound
   // object or any other audio objects.
   usingASIO = MultiChannel.useJASIO();
+
+  // Switch the JAsio synthesis engine to 48 kHz (required for Dante Virtual
+  // Soundcard and standard 48 kHz ASIO interfaces) BEFORE new Sound(this).
+  Sound.sampleRate(48000);
+
   sound = new Sound(this);
 
   if (usingASIO) {
-    String driver = selectFocusriteDriver();
+    String driver = selectAsioDriver();
     if (driver != null) {
       try {
         Sound.outputDevice(driver);
@@ -95,29 +132,43 @@ void setup() {
   // --- load the precomputed decoding matrix -------------------------------
   try {
     decoder = new SpeakerDecoder(dataPath(DECODER_FILE));
+    // Optional: override the subwoofer channel programmatically in code
+    // (pass a free 1-based channel number to enable, or -1 to disable):
+    // decoder = decoder.withSubwooferChannel(5);
   } catch (Exception e) {
     die("Could not load decoder JSON: " + e);
     return;
   }
   numSpeakers = decoder.getNumChannels();
-  println("Decoder '" + decoder.getName() + "' -> " + numSpeakers + " loudspeakers");
+  numOutputChannels = decoder.getNumOutputChannels();
+  println("Decoder '" + decoder.getName() + "' -> " + numSpeakers + " loudspeakers"
+    + (decoder.hasSubwoofer()
+        ? " + subwoofer on channel " + decoder.getSubwooferChannel()
+          + " (" + decoder.getSubwooferCrossoverFrequency() + " Hz LR4)"
+        : " (no subwoofer)")
+    + " [" + numOutputChannels + " output channels]");
 
   int outputs = MultiChannel.availableChannels();
   println("Using '" + deviceLabel + "' with " + outputs + " output channels");
-  if (outputs < numSpeakers) {
-    die("The square decoder needs " + numSpeakers + " output channels, but '"
+  if (outputs < numOutputChannels) {
+    die("The decoder needs " + numOutputChannels + " output channels, but '"
       + deviceLabel + "' only provides " + outputs + ".");
     return;
   }
 
-  // --- first-order B-format decoded to the four speakers ------------------
+  // --- B-format decoded to loudspeakers (+ discrete subwoofer if configured)
   ResonanceAudio.InitOptions options = new ResonanceAudio.InitOptions();
   options.numFramesPerBuffer = 512;
   options.sampleRate = Sound.sampleRate();
   options.numOutputChannels = ResonanceAudio.OUTPUT_DECODER;
   ra = new ResonanceAudio(options, decoder);
 
-  // Connects the decoded output to outputs 1-4 of the selected device.
+  // Optional runtime subwoofer tuning (only active when decoder.hasSubwoofer()):
+  // ra.setSubwooferCrossoverFrequency(80);
+  // ra.setSubwooferGainDb(0);
+  // ra.setSubwooferPolarityInverted(false);
+
+  // Connects all decoded outputs (1..numOutputChannels) to the selected device.
   engine = new ResonanceAudioEngine(this, ra, 4);
 
   sourceA = new ResonanceSoundFile(this, "loop_mono.wav", engine);
@@ -147,12 +198,15 @@ void draw() {
 
   fill(40);
   textSize(13);
-  text("4-speaker square decode on ASIO: " + deviceLabel
+  String layoutLabel = decoder.hasSubwoofer()
+    ? (numSpeakers + ".1 decode (sub ch " + decoder.getSubwooferChannel() + ")")
+    : (numSpeakers + "-speaker decode");
+  text(layoutLabel + " on ASIO: " + deviceLabel
     + "   |   click = play/pause   |   R = restart   |   D = list drivers",
     12, height - 16);
 }
 
-// top-down visualization incl. the four loudspeaker positions
+// top-down visualization incl. loudspeaker positions and optional subwoofer
 void drawTopDown() {
   pushMatrix();
   translate(width / 2, height / 2);
@@ -166,9 +220,16 @@ void drawTopDown() {
   noStroke();
   triangle(0, -14, -9, 8, 9, 8);
 
-  // loudspeakers (azimuth from front, positive toward LEFT; device channel =
-  // row + 1)
+  if (decoder.hasSubwoofer()) {
+    fill(140, 60, 60);
+    textAlign(CENTER, CENTER);
+    textSize(10);
+    text("SUB ch " + decoder.getSubwooferChannel(), 0, 22);
+  }
+
+  // loudspeakers (azimuth from front, positive toward LEFT)
   float[] az = decoder.getSpeakerAzimuths();
+  int[] routing = decoder.getEffectiveRouting();
   float rs = 4 * s;
   for (int i = 0; i < az.length; i++) {
     float a = radians(az[i]);
@@ -179,7 +240,8 @@ void drawTopDown() {
     fill(160);
     textAlign(CENTER, CENTER);
     textSize(9);
-    text(str(i + 1), sx, sy + 22);
+    int ch = i < routing.length ? routing[i] : (i + 1);
+    text(str(ch), sx, sy + 16);
   }
 
   // orbiting source
@@ -210,9 +272,9 @@ void keyPressed() {
   }
 }
 
-// Prints all ASIO drivers and returns the Focusrite USB ASIO driver name, or
+// Prints all ASIO drivers and returns the configured ASIO_DRIVER_NAME, or
 // the best fallback. Returns null if ASIO is not available or no driver exists.
-String selectFocusriteDriver() {
+String selectAsioDriver() {
   List<String> drivers = AsioDriver.getDriverNames();
   println("\nAvailable ASIO drivers:");
   for (String name : drivers) {
@@ -225,11 +287,14 @@ String selectFocusriteDriver() {
 
   int index = indexOfDriver(drivers, ASIO_DRIVER_NAME);
   if (index < 0) {
+    index = indexOfDriverContaining(drivers, "Dante");
+  }
+  if (index < 0) {
     index = indexOfDriverContaining(drivers, "Focusrite");
   }
   if (index < 0) {
     index = 0;
-    println("No Focusrite ASIO driver found, falling back to '" + drivers.get(index) + "'");
+    println("No matching ASIO driver found, falling back to '" + drivers.get(index) + "'");
   }
   return drivers.get(index);
 }

@@ -11,3 +11,4 @@ tools/cmake-*/
 tools/cmake.zip
 *.log
 hs_err_pid*.log
+DEBUG/

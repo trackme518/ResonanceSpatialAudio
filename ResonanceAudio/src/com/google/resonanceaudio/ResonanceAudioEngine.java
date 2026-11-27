@@ -96,9 +96,14 @@ public class ResonanceAudioEngine extends UnitGenerator {
 
     ChannelOut[] outs = MultiChannel.outputs();
     if (outs.length < numChannels) {
+      String detail = resonance.hasSubwoofer()
+          ? " (including subwoofer on channel "
+              + resonance.getSubwooferChannel() + ")"
+          : "";
       parent.die("The current audio output device only provides "
           + outs.length + " channels, but " + numChannels
-          + " are needed. Select a suitable device with Sound.outputDevice().");
+          + " are needed" + detail
+          + ". Select a suitable device with Sound.outputDevice().");
     }
     for (int i = 0; i < numChannels; i++) {
       channelOutputs[i].connect(outs[i].input);
@@ -107,7 +112,10 @@ public class ResonanceAudioEngine extends UnitGenerator {
     parent.registerMethod("dispose", this);
   }
 
-  /** Number of output channels (2 binaural, 16 third order ambisonics). */
+  /**
+   * Number of output channels (2 binaural, 4/9/16 raw ambisonics, or the
+   * decoder's physical output channel count including any subwoofer channel).
+   */
   public int getNumOutputChannels() {
     return numChannels;
   }
